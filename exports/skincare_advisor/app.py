@@ -1,116 +1,294 @@
 """
-Skincare Product Advisor — Streamlit Chatbot Interface
+Skincare Product Advisor — Streamlit Chatbot
 """
 
 import json
+import os
 from datetime import date
 from pathlib import Path
 
 import anthropic
 import streamlit as st
 
+# ── Load API key from .env or environment ────────────────────────────────
+def _load_api_key() -> str:
+    """Load Anthropic API key from .env file or environment."""
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if key:
+        return key
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("ANTHROPIC_API_KEY="):
+                return line.split("=", 1)[1].strip().strip("'\"")
+    return ""
+
+
+API_KEY = _load_api_key()
+
 # ── Page config ──────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Skincare Advisor",
-    page_icon="🧴",
+    page_title="skintea",
+    page_icon="",
     layout="centered",
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS ───────────────────────────────────────────────────────────
+# ── Custom CSS — muted, neutral, minimal ─────────────────────────────────
 st.markdown(
     """
 <style>
-    /* overall background & font */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@400;500;600&display=swap');
+
+    /* ── base ── */
     .stApp {
-        background: linear-gradient(135deg, #fdf6f0 0%, #f5e6f0 50%, #e8f4f8 100%);
+        background-color: #F7F5F2;
+        font-family: 'Inter', -apple-system, sans-serif;
     }
 
-    /* header area */
-    .header-container {
-        text-align: center;
-        padding: 1.2rem 0 0.6rem 0;
-    }
-    .header-container h1 {
-        font-family: 'Georgia', serif;
-        color: #6b4c6e;
-        font-size: 2rem;
-        margin-bottom: 0.2rem;
-    }
-    .header-container p {
-        color: #9b8a9e;
-        font-size: 0.95rem;
-    }
+    /* hide default streamlit branding but keep sidebar toggle */
+    #MainMenu, footer {visibility: hidden;}
+    header[data-testid="stHeader"] {background: transparent !important; backdrop-filter: none !important;}
+    header[data-testid="stHeader"] .stDeployButton {display: none !important;}
 
-    /* chat bubbles */
-    .stChatMessage {
-        border-radius: 16px !important;
-        margin-bottom: 0.7rem !important;
-    }
-
-    /* rating card */
-    .rating-card {
-        background: white;
-        border-radius: 16px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 12px rgba(107, 76, 110, 0.08);
-        margin: 0.8rem 0;
-    }
-    .rating-header {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #6b4c6e;
-        margin-bottom: 0.3rem;
-    }
-    .rating-score {
-        font-size: 2.4rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #c084a0, #8b6bb0);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    .pillar-row {
-        display: flex;
-        gap: 0.8rem;
-        margin-top: 1rem;
-    }
-    .pillar-box {
-        flex: 1;
-        background: #faf5fc;
-        border-radius: 12px;
-        padding: 1rem;
-        text-align: center;
-    }
-    .pillar-box .score {
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: #6b4c6e;
-    }
-    .pillar-box .label {
-        font-size: 0.75rem;
-        color: #9b8a9e;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-top: 0.2rem;
-    }
-
-    /* sidebar styling */
+    /* ── sidebar ── */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f8f0f8 0%, #fff 100%);
+        background-color: #FFFFFF;
+        border-right: 1px solid #EDEBE8;
     }
-    [data-testid="stSidebar"] h2 {
-        color: #6b4c6e;
+    [data-testid="stSidebar"] .stMarkdown h2 {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-weight: 500;
+        color: #2D2D2D;
+        font-size: 1.15rem;
+        letter-spacing: -0.01em;
+    }
+    [data-testid="stSidebar"] label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #8A857E;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    [data-testid="stSidebar"] .stTextInput input,
+    [data-testid="stSidebar"] .stTextArea textarea,
+    [data-testid="stSidebar"] .stSelectbox > div > div {
+        border: 1px solid #E5E2DD !important;
+        border-radius: 8px !important;
+        background: #FAFAF8 !important;
+        font-size: 0.85rem !important;
+        color: #2D2D2D !important;
+    }
+    [data-testid="stSidebar"] .stTextInput input:focus,
+    [data-testid="stSidebar"] .stTextArea textarea:focus {
+        border-color: #B8B2A8 !important;
+        box-shadow: none !important;
+    }
+    [data-testid="stSidebar"] .stMultiSelect > div {
+        border-color: #E5E2DD !important;
+        border-radius: 8px !important;
+        background: #FAFAF8 !important;
+    }
+    [data-testid="stSidebar"] .stMultiSelect span[data-baseweb="tag"] {
+        background: #EDEBE8 !important;
+        color: #4A4642 !important;
+        border-radius: 4px !important;
+        font-size: 0.75rem !important;
+    }
+    [data-testid="stSidebar"] .stButton button {
+        background: #2D2D2D !important;
+        color: #F7F5F2 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-size: 0.8rem !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.03em !important;
+        padding: 0.55rem 1rem !important;
+        transition: opacity 0.2s ease !important;
+    }
+    [data-testid="stSidebar"] .stButton button:hover {
+        opacity: 0.85 !important;
+    }
+    [data-testid="stSidebar"] hr {
+        border-color: #EDEBE8 !important;
+        margin: 1rem 0 !important;
+    }
+    [data-testid="stSidebar"] .stCaption {
+        color: #B8B2A8 !important;
+        font-size: 0.7rem !important;
     }
 
-    /* profile pill tags */
-    .profile-tag {
+    /* ── profile tags ── */
+    .tag {
         display: inline-block;
-        background: #f0e6f6;
-        color: #6b4c6e;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        margin: 0.15rem;
+        background: #EDEBE8;
+        color: #4A4642;
+        padding: 0.2rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        margin: 0.15rem 0.1rem;
+    }
+
+    /* ── header ── */
+    .app-header {
+        text-align: center;
+        padding: 2.5rem 0 1rem 0;
+    }
+    .app-header h1 {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-weight: 500;
+        color: #2D2D2D;
+        font-size: 1.75rem;
+        letter-spacing: -0.02em;
+        margin: 0;
+    }
+    .app-header p {
+        color: #A09A93;
+        font-size: 0.85rem;
+        font-weight: 300;
+        margin-top: 0.3rem;
+    }
+
+    /* ── chat avatars — espresso & pink ── */
+    .stChatMessage[data-testid="stChatMessage-assistant"] [data-testid="stChatMessageAvatar"] div {
+        background-color: #4A3228 !important;
+    }
+    .stChatMessage[data-testid="stChatMessage-assistant"] [data-testid="stChatMessageAvatar"] svg {
+        color: #F7F5F2 !important;
+    }
+    .stChatMessage[data-testid="stChatMessage-user"] [data-testid="stChatMessageAvatar"] div {
+        background-color: #D4A0A0 !important;
+    }
+    .stChatMessage[data-testid="stChatMessage-user"] [data-testid="stChatMessageAvatar"] svg {
+        color: #FFFFFF !important;
+    }
+
+    /* ── chat messages ── */
+    .stChatMessage {
+        background: transparent !important;
+        border: none !important;
+        padding: 0.6rem 0 !important;
+    }
+    [data-testid="stChatMessageContent"] {
+        background: #FFFFFF !important;
+        border: 1px solid #EDEBE8 !important;
+        border-radius: 12px !important;
+        padding: 1rem 1.2rem !important;
+        font-size: 0.88rem !important;
+        line-height: 1.6 !important;
+        color: #2D2D2D !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02) !important;
+    }
+    /* user messages — slightly different */
+    .stChatMessage[data-testid="stChatMessage-user"] [data-testid="stChatMessageContent"] {
+        background: #2D2D2D !important;
+        color: #F7F5F2 !important;
+        border: none !important;
+    }
+
+    /* markdown inside chat */
+    [data-testid="stChatMessageContent"] p {
+        color: inherit !important;
+        font-size: 0.88rem !important;
+    }
+    [data-testid="stChatMessageContent"] strong {
+        font-weight: 600 !important;
+    }
+    [data-testid="stChatMessageContent"] table {
+        font-size: 0.82rem !important;
+        border-collapse: collapse !important;
+    }
+    [data-testid="stChatMessageContent"] th {
+        background: #FAFAF8 !important;
+        font-weight: 500 !important;
+        font-size: 0.75rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.04em !important;
+        color: #8A857E !important;
+        padding: 0.5rem 0.8rem !important;
+        border-bottom: 1px solid #EDEBE8 !important;
+    }
+    [data-testid="stChatMessageContent"] td {
+        padding: 0.5rem 0.8rem !important;
+        border-bottom: 1px solid #F2F0ED !important;
+        color: #4A4642 !important;
+    }
+    [data-testid="stChatMessageContent"] h3 {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-weight: 500;
+        font-size: 1rem;
+        color: #2D2D2D;
+        margin-top: 1.2rem;
+    }
+
+    /* chat input */
+    .stChatInput {
+        border-top: 1px solid #EDEBE8 !important;
+    }
+    .stChatInput textarea {
+        font-family: 'Inter', sans-serif !important;
+        font-size: 0.88rem !important;
+        color: #2D2D2D !important;
+        border: 1px solid #E5E2DD !important;
+        border-radius: 10px !important;
+        background: #FFFFFF !important;
+    }
+    .stChatInput textarea:focus {
+        border-color: #4A3228 !important;
+        box-shadow: 0 0 0 1px #4A3228 !important;
+    }
+    .stChatInput textarea::placeholder {
+        color: #C4BFB8 !important;
+    }
+    .stChatInput button {
+        color: #4A3228 !important;
+    }
+    .stChatInput button:hover {
+        color: #D4A0A0 !important;
+    }
+    .stChatInput button:focus, .stChatInput button:active {
+        color: #4A3228 !important;
+    }
+    /* override any red/primary accent colors globally */
+    :root {
+        --primary-color: #4A3228 !important;
+    }
+    .st-emotion-cache-1gulkj5, .st-emotion-cache-ue6h4q {
+        color: #4A3228 !important;
+    }
+    /* streamlit focus rings & accents */
+    *:focus {
+        outline-color: #4A3228 !important;
+    }
+    .st-bc, .st-bd, .st-be {
+        border-color: #4A3228 !important;
+    }
+    /* send button SVG icon */
+    .stChatInput button svg {
+        fill: #4A3228 !important;
+        stroke: #4A3228 !important;
+    }
+
+    /* spinner */
+    .stSpinner > div {
+        border-top-color: #A09A93 !important;
+    }
+
+    /* alert / error */
+    .stAlert {
+        border-radius: 8px !important;
+        font-size: 0.82rem !important;
+    }
+
+    /* success toast in sidebar */
+    .stSuccess {
+        background: #F0EFEB !important;
+        color: #4A4642 !important;
+        border: 1px solid #DFDBD6 !important;
+        border-radius: 8px !important;
     }
 </style>
 """,
@@ -125,9 +303,9 @@ if "profile" not in st.session_state:
 if "evaluation_history" not in st.session_state:
     st.session_state.evaluation_history = []
 
-# ── System prompt (encapsulates the agent's full logic) ──────────────────
+# ── System prompt ────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """\
-You are a Skincare Product Advisor chatbot. You help users evaluate skincare and beauty products based on three pillars.
+You are a Skincare Product Advisor. You help users evaluate skincare and beauty products based on three pillars.
 
 ## Your Capabilities
 You evaluate products using THREE PILLARS, each with a score from 0-10:
@@ -151,34 +329,34 @@ You evaluate products using THREE PILLARS, each with a score from 0-10:
 - Rate review sentiment from 0-10
 
 ## Rating Scale
-- 9-10: ✨ Strongly Recommend — Excellent match
-- 7-8.9: 👍 Recommend — Good with minor caveats
-- 5-6.9: ⚖️ Neutral — Mixed, proceed with caution
-- 3-4.9: ⚠️ Caution — Significant concerns
-- 0-2.9: 🚫 Avoid — Poor match
+- 9-10: Strongly Recommend — Excellent match
+- 7-8.9: Recommend — Good with minor caveats
+- 5-6.9: Neutral — Mixed, proceed with caution
+- 3-4.9: Caution — Significant concerns
+- 0-2.9: Avoid — Poor match
 
 ## How to Respond
 
 When the user asks about a product:
-1. First acknowledge their question
+1. Acknowledge briefly
 2. Provide a structured rating with all three pillars
 3. Give a clear recommendation
 4. Mention any interaction warnings with their current routine
 
-ALWAYS structure your product evaluation response with this exact format for the rating summary:
+Structure your product evaluation with this format:
 
-**Overall Rating: X.X/10 — [Recommendation]**
+### Overall: X.X / 10 — [Recommendation]
 
-| Pillar | Score | Key Finding |
-|--------|-------|-------------|
-| 🧪 Ingredients | X.X/10 | [one-line summary] |
-| 🧬 Skin Compatibility | X.X/10 | [one-line summary] |
-| ⭐ User Reviews | X.X/10 | [one-line summary] |
+| Pillar | Score | Finding |
+|--------|-------|---------|
+| Ingredients | X.X | [one-line summary] |
+| Compatibility | X.X | [one-line summary] |
+| Reviews | X.X | [one-line summary] |
 
-Then provide the detailed breakdown for each pillar.
+Then provide the detailed breakdown for each pillar under its own ### heading.
 
 ## Important Rules
-- NEVER provide medical diagnoses. Always suggest seeing a dermatologist for persistent issues.
+- NEVER provide medical diagnoses. Suggest seeing a dermatologist for persistent issues.
 - Be evidence-based — cite ingredient databases and known comedogenic ratings.
 - Be transparent about your scoring methodology.
 - If you don't have enough info about the user's skin, ASK before evaluating.
@@ -188,15 +366,18 @@ Then provide the detailed breakdown for each pillar.
 ## User Profile
 {profile_context}
 
-## Conversation Style
-Be warm, knowledgeable, and concise. Use a friendly but professional tone — like a well-informed friend who happens to know a lot about skincare science. Keep responses focused and scannable.
+## Tone
+Warm but concise. Knowledgeable without being clinical. Think of yourself as a well-read friend who knows skincare science. Keep responses scannable — use short paragraphs, clear structure. No filler.
 """
+
+# ── Custom avatars (espresso brown & pink) ───────────────────────────────
+AVATAR_ASSISTANT = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><circle cx='20' cy='20' r='20' fill='%234A3228'/><text x='20' y='25' text-anchor='middle' fill='%23F7F5F2' font-family='Georgia,serif' font-size='16' font-weight='500'>s</text></svg>"
+AVATAR_USER = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><circle cx='20' cy='20' r='20' fill='%23D4A0A0'/><text x='20' y='25' text-anchor='middle' fill='%23FFFFFF' font-family='Georgia,serif' font-size='16' font-weight='500'>y</text></svg>"
 
 PROFILES_DIR = Path("./skincare_profiles")
 
 
 def _load_profile(user_id: str) -> dict:
-    """Load profile from local JSON file."""
     path = PROFILES_DIR / f"{user_id}.json"
     if path.exists():
         return json.loads(path.read_text())
@@ -204,7 +385,6 @@ def _load_profile(user_id: str) -> dict:
 
 
 def _save_profile(user_id: str, profile: dict):
-    """Save profile to local JSON file."""
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     path = PROFILES_DIR / f"{user_id}.json"
     profile["last_updated"] = str(date.today())
@@ -212,7 +392,6 @@ def _save_profile(user_id: str, profile: dict):
 
 
 def _build_profile_context() -> str:
-    """Build the profile context string for the system prompt."""
     p = st.session_state.profile
     if not p:
         return "No profile set yet. Ask the user about their skin type and routine before evaluating."
@@ -223,7 +402,7 @@ def _build_profile_context() -> str:
     if p.get("concerns"):
         parts.append(f"Concerns: {', '.join(p['concerns'])}")
     if p.get("sensitivities"):
-        parts.append(f"Sensitivities/Allergens: {', '.join(p['sensitivities'])}")
+        parts.append(f"Sensitivities: {', '.join(p['sensitivities'])}")
     if p.get("routine"):
         parts.append(f"Current routine: {', '.join(p['routine'])}")
     if st.session_state.evaluation_history:
@@ -233,47 +412,38 @@ def _build_profile_context() -> str:
     return "\n".join(parts)
 
 
-# ── Sidebar: Profile Setup ───────────────────────────────────────────────
+# ── Sidebar ──────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🪞 Your Skin Profile")
+    st.markdown("## your profile")
 
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        help="Required to power the advisor. Get one at console.anthropic.com",
-    )
-
-    st.divider()
-
-    name = st.text_input("Your name", value=st.session_state.profile.get("name", ""))
+    name = st.text_input("Name", value=st.session_state.profile.get("name", ""))
 
     skin_type = st.selectbox(
         "Skin type",
         ["", "Normal", "Oily", "Dry", "Combination", "Sensitive"],
         index=0,
-        help="Select your primary skin type",
     )
 
     concerns = st.multiselect(
-        "Skin concerns",
-        ["Acne", "Aging", "Hyperpigmentation", "Redness", "Dryness", "Oiliness", "Large pores", "Dark circles", "Texture"],
+        "Concerns",
+        ["Acne", "Aging", "Hyperpigmentation", "Redness", "Dryness", "Oiliness", "Large pores", "Texture", "Dark circles"],
         default=st.session_state.profile.get("concerns", []),
     )
 
     sensitivities = st.text_input(
-        "Known sensitivities",
+        "Sensitivities",
         value=", ".join(st.session_state.profile.get("sensitivities", [])),
-        help="Ingredients you react to, comma-separated (e.g. fragrance, retinol)",
+        placeholder="fragrance, retinol, alcohol...",
     )
 
     routine = st.text_area(
-        "Current routine products",
+        "Current routine",
         value="\n".join(st.session_state.profile.get("routine", [])),
-        help="One product per line",
-        height=100,
+        placeholder="One product per line",
+        height=90,
     )
 
-    if st.button("💾  Save Profile", use_container_width=True):
+    if st.button("Save", use_container_width=True):
         profile = {
             "name": name,
             "skin_type": skin_type,
@@ -284,27 +454,24 @@ with st.sidebar:
         st.session_state.profile = profile
         if name:
             _save_profile(name.lower().replace(" ", "_"), profile)
-        st.success("Profile saved!")
+        st.success("Saved")
 
-    # show current profile summary
     if st.session_state.profile.get("skin_type"):
         st.divider()
-        st.markdown("### Active Profile")
         p = st.session_state.profile
-        tags_html = f'<span class="profile-tag">{p["skin_type"]} skin</span>'
-        for c in p.get("concerns", []):
-            tags_html += f'<span class="profile-tag">{c}</span>'
+        tags = [p["skin_type"]] + p.get("concerns", [])
+        tags_html = "".join(f'<span class="tag">{t}</span>' for t in tags)
         st.markdown(tags_html, unsafe_allow_html=True)
 
     st.divider()
-    st.caption("Your data is stored locally only — never sent to third parties.")
+    st.caption("All data stored locally.")
 
 # ── Header ───────────────────────────────────────────────────────────────
 st.markdown(
     """
-<div class="header-container">
-    <h1>🧴 Skincare Advisor</h1>
-    <p>Ask me about any skincare or beauty product — I'll rate it for your skin.</p>
+<div class="app-header">
+    <h1>skintea</h1>
+    <p>rate any product for your skin</p>
 </div>
 """,
     unsafe_allow_html=True,
@@ -312,46 +479,59 @@ st.markdown(
 
 # ── Chat history ─────────────────────────────────────────────────────────
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    with st.chat_message(msg["role"], avatar=AVATAR_USER if msg["role"] == "user" else AVATAR_ASSISTANT):
         st.markdown(msg["content"])
 
 # ── Chat input ───────────────────────────────────────────────────────────
-if prompt := st.chat_input("Ask about a product... e.g. 'Rate CeraVe Moisturizing Cream'"):
-    # guard: need API key
-    if not api_key:
-        st.error("Please enter your Anthropic API key in the sidebar to get started.")
+if prompt := st.chat_input("try 'rate the ordinary niacinamide serum'"):
+    if not API_KEY:
+        st.error("No API key found. Set ANTHROPIC_API_KEY in your .env file.")
         st.stop()
 
-    # add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=AVATAR_USER):
         st.markdown(prompt)
 
-    # build system prompt with current profile
     system = SYSTEM_PROMPT.format(profile_context=_build_profile_context())
-
-    # prepare messages for API
     api_messages = [
         {"role": m["role"], "content": m["content"]}
         for m in st.session_state.messages
     ]
 
-    # call Anthropic API
-    with st.chat_message("assistant"):
-        with st.spinner("Analyzing..."):
+    with st.chat_message("assistant", avatar=AVATAR_ASSISTANT):
+        with st.spinner(""):
             try:
-                client = anthropic.Anthropic(api_key=api_key)
+                client = anthropic.Anthropic(api_key=API_KEY)
                 response = client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model="claude-haiku-4-5-20251001",
                     max_tokens=4096,
                     system=system,
                     messages=api_messages,
                 )
                 reply = response.content[0].text
             except anthropic.AuthenticationError:
-                reply = "Invalid API key. Please check the key in the sidebar and try again."
+                reply = "Your API key appears to be invalid or expired. Check ANTHROPIC_API_KEY in your .env file."
+            except anthropic.BadRequestError as e:
+                if "credit balance" in str(e).lower():
+                    reply = (
+                        "Looks like your API credits have run out. "
+                        "Top up at [console.anthropic.com/settings/billing]"
+                        "(https://console.anthropic.com/settings/billing) and try again."
+                    )
+                else:
+                    reply = f"Request error: {e}"
+            except anthropic.RateLimitError:
+                reply = "You're sending requests too quickly. Wait a moment and try again."
             except Exception as e:
-                reply = f"Something went wrong: {e}"
+                error_str = str(e).lower()
+                if "credit" in error_str or "balance" in error_str:
+                    reply = (
+                        "Looks like your API credits have run out. "
+                        "Top up at [console.anthropic.com/settings/billing]"
+                        "(https://console.anthropic.com/settings/billing) and try again."
+                    )
+                else:
+                    reply = f"Something went wrong — please try again. ({type(e).__name__})"
 
         st.markdown(reply)
 
